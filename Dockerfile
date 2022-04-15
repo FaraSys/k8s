@@ -27,4 +27,4 @@ ADD assets assets
 
 EXPOSE ${PORT}
 
-ENTRYPOINT ./etcdkeeper.bin -h $HOST -p $POR
+ENTRYPOINT ./etcdkeeper.bin -h $HOST -p $PORT
