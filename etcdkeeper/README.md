@@ -1,3 +1,5 @@
+etcdkeeper.yaml - it's deployment for k8s
+
 ![image](https://github.com/evildecay/etcdkeeper/blob/master/logo/logo-horizontal.png)
 ## ETCD Keeper
 * Lightweight etcd web client.
