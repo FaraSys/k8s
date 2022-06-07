@@ -1,0 +1,254 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: logging
+  labels:
+    k8s-app: fluent-bit
+data:
+  # Configuration files: server, input, filters and output
+  # ======================================================
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         1
+        Log_Level     warn
+        Daemon        off
+        Parsers_File  parsers.conf
+        HTTP_Server   On
+        HTTP_Listen   0.0.0.0
+        HTTP_Port     2020
+
+    @INCLUDE input-kubernetes.conf
+    @INCLUDE filter-kubernetes.conf
+    @INCLUDE output-elasticsearch.conf
+
+  input-kubernetes.conf: |
+    [INPUT]
+        Name              tail
+        Tag               kube.<namespace_name>.<container_name>.<pod_name>.<docker_id>-
+        Tag_Regex         (?<pod_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)_(?<namespace_name>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
+        Path              /var/log/containers/*middleware*.log
+        Parser            containerd
+        DB                /var/log/flb_kube_mv.db
+        Buffer_Chunk_Size 512KB
+        Mem_Buf_Limit     20MB
+        Buffer_Max_Size   10MB
+        Skip_Long_Lines   On
+        Refresh_Interval  10
+        Docker_Mode       On
+
+    [INPUT]
+        Name              tail
+        Tag               kube.<namespace_name>.<container_name>.<pod_name>.<docker_id>-
+        Tag_Regex         (?<pod_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)_(?<namespace_name>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
+        Path              /var/log/containers/*applications*.log
+        Parser            containerd
+        DB                /var/log/flb_kube_apl.db
+        Buffer_Chunk_Size 512KB
+        Mem_Buf_Limit     20MB
+        Buffer_Max_Size   10MB
+        Skip_Long_Lines   On
+        Refresh_Interval  10
+        Docker_Mode       On
+
+
+
+  filter-kubernetes.conf: |
+    [FILTER]
+        Name    lua
+        Match   kube.*
+        script  /fluent-bit/etc/record_log.lua
+        call    normalize
+
+    [FILTER]
+        Name    parser
+        Match   kube.*
+        Key_Name log
+        Parser docker
+
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Kube_Tag_Prefix     kube.
+        Regex_Parser        k8s-custom-tag
+        Merge_Log           On
+        Merge_Log_Key       _source
+        Keep_Log            Off
+        Merge_Log_Trim      On
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+        Annotations         Off
+        Labels              Off
+
+    [FILTER]
+        Name    lua
+        Match   kube.*
+        script  /fluent-bit/etc/remove_field_log.lua
+        call    removeFields
+
+    [FILTER]
+        Name    lua
+        Match   kube.*
+        script  /fluent-bit/etc/time_log.lua
+        call    insert_date
+
+  record_log.lua: |
+
+    function normalize(tag, timestamp, record)
+    local result = 0
+
+    if (record.log == nil or record.log == '') then
+      result = -1
+    elseif (string.find(record.log, "{", 1, 2) == nil) then
+      record.log = string.format("{\"message\": \"%s\", \"level\": \"Information\"}", record.log)
+      result = 2
+    end
+
+      return result, timestamp, record
+    end
+
+  time_log.lua: |
+
+    function insert_date(tag, timestamp, record)
+    local result = 0
+
+    if (record["@timestamp"] == nil) then
+      record["@timestamp"] = os.date("!%Y-%m-%dT%T.0+00:00", math.ceil(timestamp))
+      result = 2
+    end
+
+      return result, timestamp, record
+    end
+
+  remove_field_log.lua: |
+
+    function sliceArray(tbl, first, last)
+        local sliced = {}
+        for i = first or 1, last or #tbl do
+            sliced[#sliced + 1] = tbl[i]
+        end
+        return sliced
+    end
+ 
+    function isArray(record)
+        return type(record) == 'table' and #record > 0 and next(record, #record) == nil
+    end
+ 
+    function RemovePathArray(record, path)
+        for k, v in pairs(record) do
+            removePath(v, path)
+        end
+    end
+ 
+    function removePath(record, path)
+        for i = 1, #path do
+            local fieldName = path[i]
+            if record == nil or type(record) ~= 'table' then
+                break
+            end
+ 
+            if i == #path then
+                record[fieldName] = nil
+            else
+                if isArray(record[fieldName]) then
+                    RemovePathArray(record[fieldName], sliceArray(path, i + 1))
+                else
+                    record = record[fieldName]
+                end
+            end
+        end
+    end
+
+    function removeFields(tag, timestamp, record)
+        local exitCode = nil
+        if type(record) == 'table' then
+        removePath(record, {'stream'})
+        removePath(record, {'time'})
+        removePath(record, {'messageTemplate'})
+        removePath(record, {'fields', 'Error'})
+        removePath(record, {'fields', 'E2E', 'SensitiveDataInfo', 'Tags'})
+        removePath(record, {'fields', 'HttpInfo/HttpHeaders', 'Authorization'})
+        removePath(record, {'fields', 'Reply', 'Code'})
+        removePath(record, {'fields', 'Reply', 'CompletedAt'})
+        removePath(record, {'fields', 'Reply', 'ReplyType'})
+        removePath(record, {'fields', 'Reply', 'Fault', 'Code'})
+        removePath(record, {'fields', 'Reply', 'Vacancy', 'KeySkills'})
+        removePath(record, {'fields', 'Request'})
+        removePath(record, {'fields', 'Request', 'Query'})
+        removePath(record, {'fields', 'Request', 'EndDate'})
+        removePath(record, {'fields', 'StatusCode'})
+        removePath(record, {'fields', 'Schemes'})
+        removePath(record, {'fields', 'LogEntryContextItems', 'ChildNodes', 'Value'})
+        removePath(record, {'fields', 'MachineLocalIpAddress'})
+        removePath(record, {'fields', 'NodeName'})
+        removePath(record, {'fields', 'callRequest'})
+        removePath(record, {'fields', 'Meeting'})
+        removePath(record, {'fields', 'ThreadId'})
+        removePath(record, {'fields', 'vacancy', 'KeySkills'})
+        removePath(record, {'fields', 'vacancy', 'Department', 'Id'})
+        removePath(record, {'kubernetes', 'pod_id'})
+        removePath(record, {'kubernetes', 'docker_id'})
+        removePath(record, {'kubernetes', 'container_hash'})
+        exitCode = 2
+      else
+        exitCode = 0
+      end
+      return exitCode, timestamp, record
+    end
+
+  output-elasticsearch.conf: |
+    [OUTPUT]
+        Name            es
+        Match           kube.middleware.*
+        Host            ${FLUENT_ELASTICSEARCH_HOST}
+        Port            ${FLUENT_ELASTICSEARCH_PORT}
+        tls             On
+        tls.verify      Off
+        Index           logstash
+        Logstash_Prefix logstash
+        Logstash_Format On
+        Retry_Limit     10
+        Buffer_Size     False
+        Trace_Output    Off
+        Trace_Error     On
+        Suppress_Type_Name On
+
+    [OUTPUT]
+        Name            es
+        Match           kube.applications.*
+        Host            ${FLUENT_ELASTICSEARCH_HOST}
+        Port            ${FLUENT_ELASTICSEARCH_PORT}
+        tls             On
+        tls.verify      Off
+        Index           logstash_applications
+        Logstash_Prefix logstash_applications
+        Logstash_Format On
+        Retry_Limit     10
+        Buffer_Size     False
+        Trace_Output    Off
+        Trace_Error     On
+        Suppress_Type_Name On
+
+  parsers.conf: |
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep   Off
+
+    [PARSER]
+        Name containerd
+        Format regex
+        Regex ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+        Time_Key time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+        Time_Keep On
+
+    [PARSER]
+        Name    k8s-custom-tag
+        Format  regex
+        Regex   ^(?<namespace_name>[^_]+)\.(?<container_name>.+)\.(?<pod_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)\.(?<docker_id>[a-z0-9]{64})-$
