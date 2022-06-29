@@ -51,6 +51,20 @@ data:
         Refresh_Interval  10
         Docker_Mode       On
 
+    [INPUT]
+        Name              tail
+        Tag               kube.<namespace_name>.<container_name>.<pod_name>.<docker_id>-
+        Tag_Regex         (?<pod_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)_(?<namespace_name>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
+        Path              /var/log/containers/*rabbitmq*.log
+        Parser            containerd
+        DB                /var/log/flb_kube_apl.db
+        Buffer_Chunk_Size 512KB
+        Mem_Buf_Limit     20MB
+        Buffer_Max_Size   10MB
+        Skip_Long_Lines   On
+        Refresh_Interval  10
+        Docker_Mode       On
+
 
 
   filter-kubernetes.conf: |
@@ -219,6 +233,22 @@ data:
     [OUTPUT]
         Name            es
         Match           kube.applications.*
+        Host            ${FLUENT_ELASTICSEARCH_HOST}
+        Port            ${FLUENT_ELASTICSEARCH_PORT}
+        tls             On
+        tls.verify      Off
+        Index           logstash_applications
+        Logstash_Prefix logstash_applications
+        Logstash_Format On
+        Retry_Limit     10
+        Buffer_Size     False
+        Trace_Output    Off
+        Trace_Error     On
+        Suppress_Type_Name On
+
+    [OUTPUT]
+        Name            es
+        Match           kube.rabbitmq.*
         Host            ${FLUENT_ELASTICSEARCH_HOST}
         Port            ${FLUENT_ELASTICSEARCH_PORT}
         tls             On
