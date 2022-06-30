@@ -24,13 +24,13 @@ spec:
     spec:
       containers:
       - name: fluent-bit
-        image: fluent/fluent-bit:1.7
+        image: fluent/fluent-bit:1.9
         imagePullPolicy: Always
         ports:
           - containerPort: 2020
         env:
         - name: FLUENT_ELASTICSEARCH_HOST
-          value: "s-atelk-01.cag.wargaming.net"
+          value: "elastic.lesta.group"
         - name: FLUENT_ELASTICSEARCH_PORT
           value: "443"
         resources:
@@ -48,6 +48,10 @@ spec:
         - name: fluent-bit-config
           mountPath: /fluent-bit/etc/
       terminationGracePeriodSeconds: 10
+      hostAliases:
+      - ip: 10.135.70.25
+        hostnames:
+        - elastic.lesta.group
       volumes:
       - name: varlog
         hostPath:
