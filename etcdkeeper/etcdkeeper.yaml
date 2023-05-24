@@ -22,7 +22,7 @@ spec:
       - name: etcdkeeper
         image: fyakhyaev/etcdkeeper
         command: ["./etcdkeeper.bin"]
-        args: ["-usetls", "-auth", "-cacert", "/etc/ssl/certs/root-cag.crt"]
+        args: ["-usetls", "-auth", "-cacert", "/etc/ssl/certs/root.crt"]
         ports:
         - containerPort: 8080
         resources:
@@ -32,12 +32,12 @@ spec:
             memory: "128Mi" 
         volumeMounts:
         - name: root-cert
-          mountPath: /etc/ssl/certs/root-cag.crt
-          subPath: root-cag.crt
+          mountPath: /etc/ssl/certs/root.crt
+          subPath: root.crt
       volumes:
       - name: root-cert
         secret:
-          secretName: root-cag.crt
+          secretName: root.crt
 
 ---
 
