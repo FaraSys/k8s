@@ -30,7 +30,7 @@ spec:
           - containerPort: 2020
         env:
         - name: FLUENT_ELASTICSEARCH_HOST
-          value: "elastic.lesta.group"
+          value: "elastic.mydomain.com"
         - name: FLUENT_ELASTICSEARCH_PORT
           value: "443"
         resources:
@@ -38,7 +38,7 @@ spec:
             cpu: 0.2
             memory: 256Mi
           limits:
-            memory: 1Gi
+            memory: 512Mi
         volumeMounts:
         - name: varlog
           mountPath: /var/log
@@ -49,9 +49,9 @@ spec:
           mountPath: /fluent-bit/etc/
       terminationGracePeriodSeconds: 10
       hostAliases:
-      - ip: 10.135.70.25
+      - ip: 10.1.1.90
         hostnames:
-        - elastic.lesta.group
+        - elastic.mydomain.com
       volumes:
       - name: varlog
         hostPath:
