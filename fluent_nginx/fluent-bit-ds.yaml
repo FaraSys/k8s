@@ -30,7 +30,7 @@ spec:
           - containerPort: 2020
         env:
         - name: FLUENT_ELASTICSEARCH_HOST
-          value: "elastic.wargaming.net"
+          value: "elastic.mydomain.com"
         - name: FLUENT_ELASTICSEARCH_PORT
           value: "443"
         resources:
